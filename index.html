@@ -2,8 +2,8 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ATC Tracker - Pro Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ATC Tracker - Precision Pro</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,129 +11,138 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: -apple-system, system-ui, sans-serif; background: #f8fafc; }
-        #map { height: 40vh; width: 100%; transition: filter 0.5s; }
-        .atc-btn { transition: all 0.2s; border: 3px solid #e2e8f0; }
-        .atc-active { background-color: #0f172a !important; color: white !important; border-color: #3b82f6; transform: scale(1.1); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2); }
-        .event-active { background-color: #ef4444 !important; color: white !important; }
-        @keyframes alert-blink { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(239, 68, 68, 0); } 50% { box-shadow: inset 0 0 50px 20px rgba(239, 68, 68, 0.6); } }
-        .overspeed-alert { animation: alert-blink 0.5s infinite; }
-        .modal { backdrop-filter: blur(12px); display: none; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: #0f172a; }
+        
+        /* 深度下移：應對背景導航、通話常駐條 */
+        .deep-safe-top { padding-top: calc(env(safe-area-inset-top) + 80px); }
+        
+        #map { height: 32vh; width: 100%; border-radius: 0 0 2rem 2rem; }
+        
+        .atc-btn { transition: all 0.2s; border: 3px solid #334155; color: #94a3b8; }
+        .atc-active { background-color: #3b82f6 !important; color: white !important; border-color: #60a5fa; transform: scale(1.05); box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
+        
+        .event-btn { transition: all 0.2s; border: 2px solid #1e293b; background: #1e293b; color: #64748b; }
+        .event-active { background-color: #ef4444 !important; color: white !important; border-color: #f87171 !important; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+        
+        @keyframes alert-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .overspeed-alert #currentSpeed { color: #ef4444; animation: alert-blink 0.4s infinite; }
+        
+        .modal { backdrop-filter: blur(20px); display: none; }
         .modal.active { display: flex; }
-        .tunnel-mode #map { filter: brightness(0.6) grayscale(0.6); }
+        
+        .card-inner { background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); }
     </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden">
+<body class="h-screen flex flex-col overflow-hidden text-slate-200">
 
     <!-- 啟動遮罩 -->
-    <div id="splash" class="fixed inset-0 z-[2000] bg-slate-900 flex flex-col items-center justify-center text-white p-10 text-center">
-        <div class="mb-6 bg-blue-600 p-5 rounded-full shadow-2xl shadow-blue-500/50"><i data-lucide="activity" class="w-14 h-14"></i></div>
-        <h1 class="text-3xl font-black mb-2 tracking-tighter">ATC 專業追蹤系統</h1>
-        <p class="text-slate-400 text-sm mb-10 max-w-xs">支援全螢幕常亮、里程累計、慣性導航與變速位移積分</p>
-        <button onclick="unlockSystem()" class="bg-blue-600 hover:bg-blue-500 text-white font-black py-5 px-14 rounded-2xl shadow-2xl transition-all active:scale-95 text-lg">
-            啟動系統
-        </button>
+    <div id="splash" class="fixed inset-0 z-[2000] bg-slate-950 flex flex-col items-center justify-center p-10 text-center">
+        <div class="mb-8 relative">
+            <div class="absolute inset-0 bg-blue-500 blur-3xl opacity-30 animate-pulse"></div>
+            <div class="relative bg-blue-600 p-6 rounded-3xl shadow-2xl"><i data-lucide="radar" class="w-14 h-14 text-white"></i></div>
+        </div>
+        <h1 class="text-3xl font-black mb-3 tracking-tighter text-white">ATC 系統版本 9.0</h1>
+        <p class="text-slate-500 text-sm mb-12 leading-relaxed">專業級軌道數據監測<br>已為背景導航模式優化安全佈局</p>
+        <button onclick="unlockSystem()" class="bg-blue-600 text-white font-black py-5 px-16 rounded-2xl shadow-2xl active:scale-95 transition-all text-xl">進入駕駛艙</button>
     </div>
 
-    <!-- 地圖與速表 -->
-    <div id="mapContainer" class="z-0 relative shadow-inner h-[40vh]">
-        <div id="map" class="h-full"></div>
-        <div class="absolute top-4 left-4 z-[1000] bg-white/95 backdrop-blur p-5 rounded-[2rem] shadow-2xl border flex flex-col items-center min-w-[140px]">
-            <span class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">km/h</span>
-            <span id="currentSpeed" class="text-6xl font-black text-slate-900 italic leading-none">0.0</span>
-            <div class="flex items-center mt-3 space-x-2">
-                <div id="modeDot" class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-                <span id="modeText" class="text-[10px] font-bold text-slate-500 uppercase">GPS ONLINE</span>
+    <!-- 上半部：地圖與速度儀 -->
+    <div id="header" class="relative z-0 bg-slate-900 deep-safe-top">
+        <div id="map"></div>
+        
+        <!-- 速度表：重新設計為緊湊橫向，避開頂部 -->
+        <div class="absolute top-[calc(env(safe-area-inset-top)+85px)] left-4 right-4 z-[1000] flex justify-between items-center pointer-events-none">
+            <div class="bg-slate-950/80 backdrop-blur-xl p-4 rounded-3xl border border-white/10 shadow-2xl pointer-events-auto flex items-center space-x-4">
+                <div class="flex flex-col items-center border-r border-white/10 pr-4">
+                    <span class="text-[8px] font-black text-slate-500 uppercase tracking-widest">km/h</span>
+                    <span id="currentSpeed" class="text-4xl font-black text-white italic leading-none">0.0</span>
+                </div>
+                <div class="flex flex-col justify-center">
+                    <div class="flex items-center space-x-2">
+                        <div id="modeDot" class="w-2 h-2 rounded-full bg-green-500"></div>
+                        <span id="modeText" class="text-[9px] font-bold text-slate-300">GPS ACTIVE</span>
+                    </div>
+                    <span id="distanceDisplay" class="text-[10px] font-mono text-blue-400 mt-1">000.00 km</span>
+                </div>
+            </div>
+            <div id="wakeLockStatus" class="bg-slate-950/80 backdrop-blur-xl p-4 rounded-full border border-white/10 shadow-2xl pointer-events-auto opacity-30 transition-opacity">
+                <i data-lucide="sun" class="w-5 h-5 text-yellow-500"></i>
             </div>
         </div>
     </div>
 
-    <!-- 底部操作區 -->
-    <div class="flex-1 bg-white p-6 flex flex-col space-y-6 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] rounded-t-[3rem] z-10 -mt-8 border-t border-slate-100">
+    <!-- 下半部：操作面板 -->
+    <div class="flex-1 bg-slate-900 p-6 flex flex-col space-y-6 rounded-t-[3rem] z-10 -mt-6 border-t border-white/5 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
         
-        <!-- ATC 控制 (加大版) -->
-        <div class="flex flex-col space-y-3">
-            <div class="flex justify-between items-end px-1">
-                <span class="text-[11px] font-black text-slate-400 uppercase tracking-widest italic">ATC Limit Selector</span>
-                <span id="wakeLockIcon" class="text-blue-500"><i data-lucide="sun" class="w-4 h-4"></i></span>
+        <!-- ATC 選擇區 -->
+        <div class="space-y-3">
+            <div class="flex justify-between items-center px-2">
+                <span class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">ATC Limit Control</span>
+                <span class="text-[10px] font-bold text-blue-500/50">PROFESSIONAL GRADE</span>
             </div>
             <div class="grid grid-cols-4 gap-3">
-                <button onclick="setAtc(15)" class="atc-btn h-16 rounded-2xl font-black text-2xl bg-slate-50 text-slate-800">15</button>
-                <button onclick="setAtc(25)" class="atc-btn atc-active h-16 rounded-2xl font-black text-2xl bg-slate-50 text-slate-800">25</button>
-                <button onclick="setAtc(35)" class="atc-btn h-16 rounded-2xl font-black text-2xl bg-slate-50 text-slate-800">35</button>
-                <button onclick="setAtc(45)" class="atc-btn h-16 rounded-2xl font-black text-2xl bg-slate-50 text-slate-800">45</button>
+                <button onclick="setAtc(15)" class="atc-btn h-16 rounded-2xl font-black text-2xl bg-slate-800">15</button>
+                <button onclick="setAtc(25)" class="atc-btn atc-active h-16 rounded-2xl font-black text-2xl bg-slate-800">25</button>
+                <button onclick="setAtc(35)" class="atc-btn h-16 rounded-2xl font-black text-2xl bg-slate-800">35</button>
+                <button onclick="setAtc(45)" class="atc-btn h-16 rounded-2xl font-black text-2xl bg-slate-800">45</button>
             </div>
         </div>
 
-        <!-- 事件控制 -->
+        <!-- 事件觸發區 -->
         <div class="grid grid-cols-3 gap-3">
-            <button id="btnDist" onclick="toggleEvent('dist')" class="flex flex-col items-center justify-center bg-slate-50 py-4 rounded-2xl border border-slate-100 transition-colors">
-                <i data-lucide="between-horizontal" class="w-6 h-6 mb-1"></i>
-                <span class="text-[10px] font-bold">車距不足</span>
+            <button id="btnDist" onclick="toggleEvent('dist')" class="event-btn flex flex-col items-center justify-center py-5 rounded-2xl active:scale-95">
+                <i data-lucide="maximize" class="w-6 h-6 mb-2"></i>
+                <span class="text-[9px] font-bold uppercase tracking-tighter">車距不足</span>
             </button>
-            <button id="btnWind" onclick="toggleEvent('wind')" class="flex flex-col items-center justify-center bg-slate-50 py-4 rounded-2xl border border-slate-100 transition-colors">
-                <i data-lucide="wind" class="w-6 h-6 mb-1"></i>
-                <span class="text-[10px] font-bold">風阻過大</span>
+            <button id="btnWind" onclick="toggleEvent('wind')" class="event-btn flex flex-col items-center justify-center py-5 rounded-2xl active:scale-95">
+                <i data-lucide="wind" class="w-6 h-6 mb-2"></i>
+                <span class="text-[9px] font-bold uppercase tracking-tighter">風阻過大</span>
             </button>
-            <button id="btnIntru" onclick="toggleEvent('intru')" class="flex flex-col items-center justify-center bg-slate-50 py-4 rounded-2xl border border-slate-100 transition-colors">
-                <i data-lucide="scan-eye" class="w-6 h-6 mb-1"></i>
-                <span class="text-[10px] font-bold">軌道入侵</span>
+            <button id="btnIntru" onclick="toggleEvent('intru')" class="event-btn flex flex-col items-center justify-center py-5 rounded-2xl active:scale-95">
+                <i data-lucide="alert-triangle" class="w-6 h-6 mb-2"></i>
+                <span class="text-[9px] font-bold uppercase tracking-tighter">軌道入侵</span>
             </button>
         </div>
 
-        <!-- 功能按鈕 -->
+        <!-- 功能底欄 -->
         <div class="flex space-x-3 pt-2">
-            <button id="recordBtn" onclick="toggleRecording()" class="flex-1 bg-slate-900 text-white font-black py-5 rounded-[1.5rem] shadow-2xl flex items-center justify-center text-xl tracking-tight transition-all active:scale-95">
-                <i data-lucide="play" class="mr-3 fill-white w-6 h-6"></i> START TRIP
+            <button id="recordBtn" onclick="toggleRecording()" class="flex-1 bg-white text-slate-900 font-black py-5 rounded-3xl shadow-xl flex items-center justify-center text-xl active:scale-95 transition-all">
+                <i data-lucide="circle" id="recordIcon" class="mr-3 fill-red-600 text-red-600 w-5 h-5"></i> START TRIP
             </button>
-            <button onclick="openHistory()" class="bg-slate-100 p-5 rounded-[1.5rem] border border-slate-200 active:bg-slate-200 transition-colors">
-                <i data-lucide="history" class="text-slate-800 w-7 h-7"></i>
+            <button onclick="openHistory()" class="bg-slate-800 p-5 rounded-3xl border border-white/5 active:bg-slate-700">
+                <i data-lucide="database" class="text-white w-6 h-6"></i>
             </button>
         </div>
     </div>
 
     <!-- 歷史紀錄 Modal -->
-    <div id="historyModal" class="modal fixed inset-0 z-[3000] bg-slate-900/70 flex-col items-center justify-end">
-        <div class="bg-slate-50 w-full h-[92vh] rounded-t-[3rem] p-8 flex flex-col shadow-2xl">
+    <div id="historyModal" class="modal fixed inset-0 z-[3000] bg-slate-950/80 flex-col items-center justify-end">
+        <div class="bg-slate-900 w-full h-[94vh] rounded-t-[3rem] p-8 flex flex-col border-t border-white/10 shadow-2xl">
             <div class="flex justify-between items-center mb-8">
-                <div class="flex flex-col">
-                    <h2 class="text-2xl font-black italic tracking-tighter">DATA LOGS</h2>
-                    <p class="text-xs text-slate-400 font-bold uppercase">總行駛距離與數據分析</p>
+                <div>
+                    <h2 class="text-2xl font-black italic tracking-tighter text-white">TRIP ARCHIVE</h2>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase">時速、位移與事件分析報告</p>
                 </div>
-                <button onclick="closeHistory()" class="p-3 bg-white border border-slate-200 rounded-full shadow-sm"><i data-lucide="arrow-down"></i></button>
+                <button onclick="closeHistory()" class="p-4 bg-slate-800 rounded-full text-white"><i data-lucide="chevron-down"></i></button>
             </div>
-            <div id="historyList" class="flex-1 overflow-y-auto space-y-6 pb-20 px-1"></div>
+            <div id="historyList" class="flex-1 overflow-y-auto space-y-6 pb-20"></div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        let map, marker, polyline;
-        let currentAtc = 25;
-        let isRecording = false;
-        let events = { dist: false, wind: false, intru: false };
-        let tripData = [];
-        let tripsHistory = JSON.parse(localStorage.getItem('atc_v7_trips') || '[]');
+        let map, marker, polyline, eventMarkers = [];
+        let currentAtc = 25, isRecording = false, events = { dist: false, wind: false, intru: false };
+        let tripData = [], tripsHistory = JSON.parse(localStorage.getItem('atc_v9_trips') || '[]');
         
-        // 物理與導航量
-        let currentV = 0; // m/s
-        let totalDistance = 0; // meters
-        let lastGpsPos = null;
-        let lastSnapshotPos = null;
-        let lastImuTime = Date.now();
-        let heading = 0;
-        let loggerTimer = null;
-        let speedSnapshots = [];
-        let wakeLock = null;
+        let currentV = 0, totalDistance = 0, lastGpsPos = null, lastSnapshotPos = null, lastImuTime = Date.now(), heading = 0;
+        let loggerTimer = null, speedSnapshots = [], wakeLock = null;
 
         async function unlockSystem() {
-            // 請求感測器權限
             if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                try { await DeviceMotionEvent.requestPermission(); } catch(e) { console.error(e); }
+                try { await DeviceMotionEvent.requestPermission(); } catch(e) {}
             }
-            // 請求防止休眠
             requestWakeLock();
-            
             document.getElementById('splash').style.display = 'none';
             initApp();
         }
@@ -142,36 +151,17 @@
             try {
                 if ('wakeLock' in navigator) {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    document.getElementById('wakeLockIcon').classList.add('text-yellow-500');
-                    wakeLock.addEventListener('release', () => {
-                        console.log('Wake Lock was released');
-                        document.getElementById('wakeLockIcon').classList.remove('text-yellow-500');
-                    });
+                    document.getElementById('wakeLockStatus').classList.remove('opacity-30');
                 }
-            } catch (err) {
-                console.error(`${err.name}, ${err.message}`);
-            }
+            } catch (err) {}
         }
-
-        // 當切換回分頁時重新請求鎖定
-        document.addEventListener('visibilitychange', async () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
-                await requestWakeLock();
-            }
-        });
 
         function initApp() {
-            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([25.033, 121.565], 17);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
-            polyline = L.polyline([], { color: '#3b82f6', weight: 8, opacity: 0.9, lineCap: 'round' }).addTo(map);
-            marker = L.circleMarker([0, 0], { radius: 10, fillColor: "#3b82f6", color: "#fff", weight: 4, fillOpacity: 1 }).addTo(map);
-
-            startSystems();
-            lucide.createIcons();
-        }
-
-        function startSystems() {
-            // GPS 監測
+            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([25.033, 121.565], 16);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+            polyline = L.polyline([], { color: '#3b82f6', weight: 6, opacity: 0.8 }).addTo(map);
+            marker = L.circleMarker([0, 0], { radius: 8, fillColor: "#3b82f6", color: "#fff", weight: 3, fillOpacity: 1 }).addTo(map);
+            
             navigator.geolocation.watchPosition((pos) => {
                 const { latitude, longitude, accuracy, speed } = pos.coords;
                 if (accuracy <= 15 && speed !== null) {
@@ -183,60 +173,42 @@
                     updateModeUI(false);
                     document.body.classList.add('tunnel-mode');
                 }
-                
                 if (lastGpsPos) {
-                    const latlng = [lastGpsPos.lat, lastGpsPos.lng];
-                    marker.setLatLng(latlng);
-                    if (!isRecording) map.panTo(latlng);
+                    marker.setLatLng([lastGpsPos.lat, lastGpsPos.lng]);
+                    if (!isRecording) map.panTo([lastGpsPos.lat, lastGpsPos.lng]);
                 }
             }, null, { enableHighAccuracy: true });
 
-            // 方位角
-            window.addEventListener('deviceorientation', (e) => {
-                heading = e.webkitCompassHeading || e.alpha || 0;
-            });
-
-            // IMU 加速度積分
-            window.addEventListener('devicemotion', (e) => {
-                const now = Date.now();
-                const dt = (now - lastImuTime) / 1000;
+            window.addEventListener('deviceorientation', e => heading = e.webkitCompassHeading || e.alpha || 0);
+            window.addEventListener('devicemotion', e => {
+                const now = Date.now(), dt = (now - lastImuTime) / 1000;
                 lastImuTime = now;
                 if (!e.acceleration || dt <= 0) return;
-
                 const accY = e.acceleration.y || 0;
-                if (Math.abs(accY) > 0.1) {
-                    currentV += (accY * dt);
-                }
+                if (Math.abs(accY) > 0.1) currentV += (accY * dt);
                 currentV = Math.max(0, currentV);
                 speedSnapshots.push(currentV);
-                if (speedSnapshots.length > 30) speedSnapshots.shift();
                 updateUI();
             });
+            lucide.createIcons();
         }
 
         function updateUI() {
             const kmh = currentV * 3.6;
             document.getElementById('currentSpeed').innerText = kmh.toFixed(1);
-            if (kmh > currentAtc + 0.5) {
-                document.body.classList.add('overspeed-alert');
-            } else {
-                document.body.classList.remove('overspeed-alert');
-            }
+            document.body.classList.toggle('overspeed-alert', kmh > currentAtc + 0.5);
+            document.getElementById('distanceDisplay').innerText = `${(totalDistance/1000).toFixed(2)} km`;
         }
 
         function updateModeUI(isGps) {
             const dot = document.getElementById('modeDot');
-            const txt = document.getElementById('modeText');
-            dot.className = `w-3 h-3 rounded-full ${isGps ? 'bg-green-500 animate-pulse' : 'bg-blue-500'}`;
-            txt.innerText = isGps ? 'GPS ONLINE' : 'INERTIAL DR';
+            dot.className = `w-2 h-2 rounded-full ${isGps ? 'bg-green-500' : 'bg-blue-500 animate-pulse'}`;
+            document.getElementById('modeText').innerText = isGps ? 'GPS ACTIVE' : 'INERTIAL DR';
         }
 
         function setAtc(val) {
             currentAtc = val;
-            document.querySelectorAll('.atc-btn').forEach(b => {
-                b.classList.remove('atc-active');
-                if (parseInt(b.innerText) === val) b.classList.add('atc-active');
-            });
+            document.querySelectorAll('.atc-btn').forEach(b => b.classList.toggle('atc-active', parseInt(b.innerText) === val));
         }
 
         function toggleEvent(type) {
@@ -247,76 +219,59 @@
         function toggleRecording() {
             isRecording = !isRecording;
             const btn = document.getElementById('recordBtn');
+            const icon = document.getElementById('recordIcon');
             if (isRecording) {
-                tripData = [];
-                totalDistance = 0;
-                lastSnapshotPos = null;
+                tripData = []; totalDistance = 0; lastSnapshotPos = null;
                 polyline.setLatLngs([]);
-                btn.innerHTML = `<i data-lucide="square" class="mr-3 fill-red-500 text-red-500 w-6 h-6"></i> STOP TRIP`;
-                btn.classList.add('bg-red-50', 'text-red-600', 'ring-4', 'ring-red-100');
+                eventMarkers.forEach(m => map.removeLayer(m));
+                eventMarkers = [];
+                btn.innerHTML = `<i data-lucide="square" class="mr-3 fill-red-600 text-red-600 w-5 h-5"></i> STOP TRIP`;
+                btn.classList.replace('bg-white', 'bg-red-50');
+                btn.classList.replace('text-slate-900', 'text-red-700');
                 loggerTimer = setInterval(recordSnapshot, 2000);
             } else {
                 clearInterval(loggerTimer);
                 saveTrip();
-                btn.innerHTML = `<i data-lucide="play" class="mr-3 fill-white w-6 h-6"></i> START TRIP`;
-                btn.classList.remove('bg-red-50', 'text-red-600', 'ring-4', 'ring-red-100');
+                btn.innerHTML = `<i data-lucide="circle" class="mr-3 fill-red-600 text-red-600 w-5 h-5"></i> START TRIP`;
+                btn.classList.replace('bg-red-50', 'bg-white');
+                btn.classList.replace('text-red-700', 'text-slate-900');
             }
             lucide.createIcons();
         }
 
-        // Haversine 公式計算兩點距離 (公尺)
         function getDistance(p1, p2) {
             const R = 6371e3;
-            const φ1 = p1.lat * Math.PI/180;
-            const φ2 = p2.lat * Math.PI/180;
-            const Δφ = (p2.lat-p1.lat) * Math.PI/180;
-            const Δλ = (p2.lng-p1.lng) * Math.PI/180;
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                      Math.cos(φ1) * Math.cos(φ2) *
-                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const φ1 = p1.lat * Math.PI/180, φ2 = p2.lat * Math.PI/180;
+            const Δφ = (p2.lat-p1.lat) * Math.PI/180, Δλ = (p2.lng-p1.lng) * Math.PI/180;
+            const a = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
         function recordSnapshot() {
             if (!lastGpsPos) return;
-
             const avgV = speedSnapshots.length > 0 ? speedSnapshots.reduce((a,b)=>a+b)/speedSnapshots.length : currentV;
-            const dist = avgV * 2;
-            const rad = (heading * Math.PI) / 180;
-            
-            // 座標外推
+            const dist = avgV * 2, rad = (heading * Math.PI) / 180;
             lastGpsPos.lat += (dist * Math.cos(rad)) / 111320;
             lastGpsPos.lng += (dist * Math.sin(rad)) / (111320 * Math.cos(lastGpsPos.lat * Math.PI / 180));
-
-            // 里程累加
-            if (lastSnapshotPos) {
-                totalDistance += getDistance(lastSnapshotPos, lastGpsPos);
-            }
+            if (lastSnapshotPos) totalDistance += getDistance(lastSnapshotPos, lastGpsPos);
             lastSnapshotPos = { ...lastGpsPos };
 
-            const snap = {
-                t: Date.now(),
-                lat: lastGpsPos.lat,
-                lng: lastGpsPos.lng,
-                v: (currentV * 3.6),
-                atc: currentAtc,
-                e: { ...events }
-            };
+            const snap = { t: Date.now(), lat: lastGpsPos.lat, lng: lastGpsPos.lng, v: (currentV * 3.6), atc: currentAtc, e: { ...events } };
             tripData.push(snap);
             polyline.addLatLng([snap.lat, snap.lng]);
             map.panTo([snap.lat, snap.lng]);
+
+            if (Object.values(events).some(v => v)) {
+                const em = L.circleMarker([snap.lat, snap.lng], { radius: 6, color: '#ef4444', fillOpacity: 0.8, weight: 2 }).addTo(map);
+                eventMarkers.push(em);
+            }
             speedSnapshots = [];
         }
 
         function saveTrip() {
             if (tripData.length < 2) return;
-            tripsHistory.unshift({ 
-                id: Date.now(), 
-                date: new Date().toLocaleString(), 
-                data: tripData,
-                distance: (totalDistance / 1000).toFixed(2) // 轉公里
-            });
-            localStorage.setItem('atc_v7_trips', JSON.stringify(tripsHistory));
+            tripsHistory.unshift({ id: Date.now(), date: new Date().toLocaleString(), data: tripData, distance: (totalDistance / 1000).toFixed(2) });
+            localStorage.setItem('atc_v9_trips', JSON.stringify(tripsHistory));
         }
 
         function openHistory() {
@@ -324,20 +279,19 @@
             list.innerHTML = '';
             tripsHistory.forEach(trip => {
                 const card = document.createElement('div');
-                card.className = "bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col";
+                card.className = "card-inner rounded-[2rem] p-6 shadow-xl flex flex-col";
                 card.innerHTML = `
-                    <div class="flex justify-between items-start mb-5">
-                        <div class="flex flex-col">
-                            <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest">${trip.date}</span>
-                            <div class="flex items-baseline space-x-2">
-                                <span class="text-3xl font-black text-slate-900">${trip.distance || 0}</span>
-                                <span class="text-xs font-bold text-slate-400 italic">KM</span>
-                            </div>
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">${trip.date}</p>
+                            <p class="text-3xl font-black text-white italic">${trip.distance} <span class="text-xs text-blue-500">KM</span></p>
                         </div>
-                        <button onclick="deleteTrip(${trip.id})" class="text-slate-200 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-6 h-6"></i></button>
+                        <button onclick="deleteTrip(${trip.id})" class="text-slate-600 hover:text-red-500 transition-colors"><i data-lucide="trash-2"></i></button>
                     </div>
-                    <canvas id="chart-${trip.id}" class="h-32 mb-6"></canvas>
-                    <button onclick="reviewTrip(${trip.id})" class="w-full py-4 bg-slate-900 text-white rounded-2xl text-xs font-black tracking-[0.2em] uppercase">Review Track</button>
+                    <div class="h-40 bg-slate-950/50 rounded-2xl p-4 border border-white/5 mb-6">
+                        <canvas id="chart-${trip.id}"></canvas>
+                    </div>
+                    <button onclick="reviewTrip(${trip.id})" class="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black tracking-[0.2em] uppercase active:scale-95 transition-all">Review Telemetry</button>
                 `;
                 list.appendChild(card);
                 renderChart(trip);
@@ -348,34 +302,31 @@
 
         function renderChart(trip) {
             const ctx = document.getElementById(`chart-${trip.id}`).getContext('2d');
+            const data = trip.data;
             new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: trip.data.map((_, i) => i * 2),
-                    datasets: [{
-                        data: trip.data.map(d => d.v),
-                        borderColor: '#3b82f6',
-                        borderWidth: 3,
-                        pointRadius: 0,
-                        tension: 0.4
-                    }, {
-                        data: trip.data.map(d => d.atc),
-                        borderColor: '#ef4444',
-                        borderWidth: 1.5,
-                        borderDash: [6, 6],
-                        stepped: true,
-                        pointRadius: 0
-                    }]
+                    labels: data.map((_, i) => i * 2),
+                    datasets: [
+                        { label: 'Speed', data: data.map(d => d.v), borderColor: '#3b82f6', borderWidth: 3, pointRadius: 0, tension: 0.4 },
+                        { label: 'ATC', data: data.map(d => d.atc), borderColor: '#ef4444', borderWidth: 1.5, borderDash: [5, 5], stepped: true, pointRadius: 0 },
+                        { 
+                            label: 'Events', 
+                            data: data.map(d => Object.values(d.e).some(v => v) ? d.v : null), 
+                            borderColor: '#f87171', 
+                            backgroundColor: '#ef4444',
+                            borderWidth: 0,
+                            pointRadius: 4,
+                            showLine: false
+                        }
+                    ]
                 },
                 options: {
+                    responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: { 
                         x: { display: false }, 
-                        y: { 
-                            beginAtZero: true, 
-                            grid: { color: '#f8fafc' },
-                            ticks: { font: { weight: 'bold', size: 10 } }
-                        } 
+                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#475569', font: { size: 9 } } } 
                     }
                 }
             });
@@ -384,15 +335,24 @@
         function reviewTrip(id) {
             const trip = tripsHistory.find(t => t.id === id);
             polyline.setLatLngs(trip.data.map(d => [d.lat, d.lng]));
-            map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+            eventMarkers.forEach(m => map.removeLayer(m));
+            eventMarkers = [];
+            trip.data.forEach(d => {
+                if (Object.values(d.e).some(v => v)) {
+                    const em = L.circleMarker([d.lat, d.lng], { radius: 6, color: '#ef4444', fillOpacity: 1 }).addTo(map);
+                    eventMarkers.push(em);
+                }
+            });
+            map.fitBounds(polyline.getBounds(), { padding: [60, 60] });
             closeHistory();
         }
 
         function deleteTrip(id) {
-            if (!confirm('永久刪除此趟紀錄？')) return;
-            tripsHistory = tripsHistory.filter(t => t.id !== id);
-            localStorage.setItem('atc_v7_trips', JSON.stringify(tripsHistory));
-            openHistory();
+            if (confirm('確定刪除此數據？')) {
+                tripsHistory = tripsHistory.filter(t => t.id !== id);
+                localStorage.setItem('atc_v9_trips', JSON.stringify(tripsHistory));
+                openHistory();
+            }
         }
 
         function closeHistory() { document.getElementById('historyModal').classList.remove('active'); }
